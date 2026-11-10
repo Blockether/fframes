@@ -19,6 +19,27 @@ pub trait Video: Sync + Sized {
     /// (e.g. encoder libx265 with yuva420p pixel format) when rendering the video.
     const BACKGROUND_COLOR: Color = Color::BLACK;
 
+    /// Frames per second at runtime. Defaults to [`Video::FPS`]. Override it when the value is
+    /// known only at runtime (for example a video defined from a scripting language).
+    fn fps(&self) -> usize {
+        Self::FPS
+    }
+
+    /// Width at runtime. Defaults to [`Video::WIDTH`].
+    fn width(&self) -> usize {
+        Self::WIDTH
+    }
+
+    /// Height at runtime. Defaults to [`Video::HEIGHT`].
+    fn height(&self) -> usize {
+        Self::HEIGHT
+    }
+
+    /// Background color at runtime. Defaults to [`Video::BACKGROUND_COLOR`].
+    fn background_color(&self) -> Color {
+        Self::BACKGROUND_COLOR
+    }
+
     /// Defines either dynamic or inferred duration of the video
     fn duration(&self) -> Duration<'_>;
 

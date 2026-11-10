@@ -40,25 +40,26 @@ impl Renderers for SkiaRenderers {
         runner: Runner<'r, 'a, 'media, V, B, A>,
     ) -> ExitCode {
         let pipeline = self.pipeline;
+        let (width, height) = (runner.video().width(), runner.video().height());
         match renderer {
             Renderer::Cpu => runner
                 .backend(fframes::cpu::CpuRenderingBackend::default())
                 .run(),
             Renderer::SkiaCpu => {
-                let cpu = SkiaCpuCtx::new(V::WIDTH, V::HEIGHT);
+                let cpu = SkiaCpuCtx::new(width, height);
                 runner
                     .backend(SkiaFFramesRenderer::new(pipeline, &cpu))
                     .run()
             }
             #[cfg(feature = "metal")]
-            Renderer::Gpu => match crate::metal::SkiaMetalCtx::new(V::WIDTH, V::HEIGHT) {
+            Renderer::Gpu => match crate::metal::SkiaMetalCtx::new(width, height) {
                 Ok(gpu) => runner
                     .backend(SkiaFFramesRenderer::new(pipeline, &gpu))
                     .run(),
                 Err(err) => runner.fail(err),
             },
             #[cfg(all(feature = "vulkan", not(feature = "metal")))]
-            Renderer::Gpu => match crate::vulkan::SkiaVulkanCtx::new(V::WIDTH, V::HEIGHT) {
+            Renderer::Gpu => match crate::vulkan::SkiaVulkanCtx::new(width, height) {
                 Ok(gpu) => runner
                     .backend(SkiaFFramesRenderer::new(pipeline, &gpu))
                     .run(),

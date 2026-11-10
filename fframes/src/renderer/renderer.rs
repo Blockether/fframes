@@ -233,7 +233,7 @@ pub fn render<
         mut font_source,
     } = FFramesRendererRuntime::new(
         TimeBase {
-            fps: TVideo::FPS,
+            fps: video.fps(),
             sample_rate: options.audio_encoder_options.sample_rate,
         },
         video,
@@ -275,8 +275,8 @@ pub fn render<
         font_source: Some(&font_source),
         abort_signal: options.abort_signal,
         current_video_size: VideoSize::new_scaled(
-            TVideo::WIDTH,
-            TVideo::HEIGHT,
+            video.width(),
+            video.height(),
             options.scale_resolution,
         ),
     };
@@ -333,7 +333,7 @@ pub fn render_frame<
         mut font_source,
     } = FFramesRendererRuntime::new(
         TimeBase {
-            fps: TVideo::FPS,
+            fps: video.fps(),
             sample_rate: options.audio_encoder_options.sample_rate,
         },
         video,
@@ -359,8 +359,8 @@ pub fn render_frame<
         font_source: Some(&font_source),
         abort_signal: None,
         current_video_size: VideoSize::new_scaled(
-            TVideo::WIDTH,
-            TVideo::HEIGHT,
+            video.width(),
+            video.height(),
             options.scale_resolution,
         ),
     };
@@ -371,7 +371,7 @@ pub fn render_frame<
         crate::Frame::__internal_make_for_renderer(
             frame_index,
             frame_index,
-            TVideo::FPS,
+            video.fps(),
             None,
             decoders,
         ),

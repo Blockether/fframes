@@ -100,7 +100,7 @@ impl InstantRenderingVideoCtx<'_> {
         let scenes = video.define_scenes();
         let runtime = FFramesRendererRuntime::new(
             TimeBase {
-                fps: TVideo::FPS,
+                fps: video.fps(),
                 sample_rate: 44100,
             },
             video,
@@ -145,8 +145,8 @@ impl<TBackend: SkiaBackend> SkiaFFramesRenderer<'_, TBackend> {
         let ctx = FFramesContext {
             time_base: fframes_ctx.runtime.time_base,
             current_video_size: fframes::VideoSize {
-                width: TVideo::WIDTH,
-                height: TVideo::HEIGHT,
+                width: video.width(),
+                height: video.height(),
             },
             abort_signal: None,
             duration_in_frames: fframes_ctx.runtime.timeline.duration_in_frames,
@@ -170,7 +170,7 @@ impl<TBackend: SkiaBackend> SkiaFFramesRenderer<'_, TBackend> {
             fframes_ctx.runtime.font_source.as_db_ref(),
         )?;
 
-        let background = TVideo::BACKGROUND_COLOR;
+        let background = video.background_color();
         native_ctx
             .surface
             .canvas()

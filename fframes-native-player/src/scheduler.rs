@@ -322,7 +322,7 @@ impl Scheduler {
             video_decoders.finish_preview_frame(concurrent_jobs);
             match (tree, job.kind) {
                 (Ok(tree), JobKind::Thumbnail(slot)) => {
-                    if let Some(image) = thumbnail(&tree, TVideo::BACKGROUND_COLOR) {
+                    if let Some(image) = thumbnail(&tree, video.background_color()) {
                         on_frame_ready(FrameReady::Thumbnail(slot, image));
                     }
                 }

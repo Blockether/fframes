@@ -124,6 +124,22 @@ impl<V: Video> Video for Truncated<'_, V> {
     const HEIGHT: usize = V::HEIGHT;
     const BACKGROUND_COLOR: Color = V::BACKGROUND_COLOR;
 
+    fn fps(&self) -> usize {
+        self.inner.fps()
+    }
+
+    fn width(&self) -> usize {
+        self.inner.width()
+    }
+
+    fn height(&self) -> usize {
+        self.inner.height()
+    }
+
+    fn background_color(&self) -> Color {
+        self.inner.background_color()
+    }
+
     fn duration(&self) -> Duration<'_> {
         Duration::Frames(self.frames)
     }

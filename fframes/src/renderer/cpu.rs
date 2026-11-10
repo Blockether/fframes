@@ -247,7 +247,7 @@ impl FFramesRenderBackend for CpuRenderingBackend {
 
                 let rtree = svg.into_svg_tree(usvg_options, &mut converter_cache, font_db)?;
 
-                let frame = renderer.render_tree(&rtree, TVideo::BACKGROUND_COLOR)?;
+                let frame = renderer.render_tree(&rtree, video.background_color())?;
 
                 writer
                     .submit_frame(claim, frame)
@@ -322,7 +322,7 @@ impl FFramesRenderBackend for CpuRenderingBackend {
 
         let frame = super::CpuFrameRenderer::new(0).render_tree(
             &rtree,
-            TVideo::BACKGROUND_COLOR,
+            video.background_color(),
             ctx.current_video_size.width as u32,
             ctx.current_video_size.height as u32,
         )?;

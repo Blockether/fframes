@@ -87,7 +87,7 @@ pub fn play<'a, 'media: 'a, TVideo: Video + Sync>(
         mut font_source,
     } = FFramesRendererRuntime::with_audio_sample_rate(
         TimeBase {
-            fps: TVideo::FPS,
+            fps: video.fps(),
             sample_rate: 44100,
         },
         video,
@@ -122,16 +122,16 @@ pub fn play<'a, 'media: 'a, TVideo: Video + Sync>(
         font_source: Some(&font_source),
         abort_signal: None,
         current_video_size: VideoSize {
-            width: TVideo::WIDTH,
-            height: TVideo::HEIGHT,
+            width: video.width(),
+            height: video.height(),
         },
     };
 
     // The window owns the Skia context, so the trees of `render_svgr` render on the CPU.
     let svgr_images = fframes::SvgrImages::new(Some(Box::new(fframes::cpu::CpuSvgrRasterizer)));
 
-    let window_size = initial_window_size::<TVideo>(options);
-    let aspect = TVideo::WIDTH as f32 / TVideo::HEIGHT.max(1) as f32;
+    let window_size = initial_window_size(video, options);
+    let aspect = video.width() as f32 / video.height().max(1) as f32;
     let tiles = if aspect < 1. {
         window_size.height as f32 / 60.
     } else {
@@ -169,9 +169,9 @@ pub fn play<'a, 'media: 'a, TVideo: Video + Sync>(
                 thumbnail_count,
                 aspect,
             ),
-            fps: TVideo::FPS,
+            fps: video.fps(),
             duration_in_frames: timeline.duration_in_frames,
-            background: TVideo::BACKGROUND_COLOR,
+            background: video.background_color(),
             looping: options.looping,
             autoplay: options.autoplay,
             start_frame: options.start_frame,
@@ -279,12 +279,12 @@ pub fn cli_preview<'a, 'media: 'a, TVideo: Video + Sync>(
     .map_err(|err| err.to_string())
 }
 
-fn initial_window_size<TVideo: Video>(options: &PlayerOptions) -> LogicalSize<u32> {
+fn initial_window_size<TVideo: Video>(video: &TVideo, options: &PlayerOptions) -> LogicalSize<u32> {
     if let Some((width, height)) = options.window_size {
         return LogicalSize::new(width, height);
     }
 
-    let (width, height) = (TVideo::WIDTH as f64, TVideo::HEIGHT as f64);
+    let (width, height) = (video.width() as f64, video.height() as f64);
     let max_height = if width < height { 960. } else { 720. };
     let scale = (1280. / width).min(max_height / height).min(1.);
     let sidebar = if width < height {

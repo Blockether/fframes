@@ -109,7 +109,7 @@ impl<TBackend: SkiaBackend> FFramesRenderBackend for SkiaFFramesRenderer<'_, TBa
             .with_cache_config(self.pipeline_config.cache)
             .render_tree(
                 &rtree,
-                TVideo::BACKGROUND_COLOR,
+                video.background_color(),
                 ctx.current_video_size.width as u32,
                 ctx.current_video_size.height as u32,
             )?;
@@ -131,12 +131,9 @@ impl<TBackend: SkiaBackend> FFramesRenderBackend for SkiaFFramesRenderer<'_, TBa
     where
         Self: Sized,
     {
-        let background_color = skia_safe::Color::from_argb(
-            TVideo::BACKGROUND_COLOR.a,
-            TVideo::BACKGROUND_COLOR.r,
-            TVideo::BACKGROUND_COLOR.g,
-            TVideo::BACKGROUND_COLOR.b,
-        );
+        let background = video.background_color();
+        let background_color =
+            skia_safe::Color::from_argb(background.a, background.r, background.g, background.b);
 
         skia_pipeline::render(Pipeline {
             background_color,

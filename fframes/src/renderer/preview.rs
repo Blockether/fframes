@@ -306,7 +306,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
         let scenes = video.define_scenes();
         let mut runtime = FFramesRendererRuntime::new(
             TimeBase {
-                fps: TVideo::FPS,
+                fps: video.fps(),
                 sample_rate: options.audio_encoder_options.sample_rate,
             },
             video,
@@ -324,14 +324,14 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
         }
 
         let timeline_index = TimelineIndex::new(
-            TVideo::FPS,
+            video.fps(),
             runtime.timeline.duration_in_frames,
             runtime.timeline.scenes.as_ref(),
         );
 
         Ok(Self {
             video,
-            size: VideoSize::new_scaled(TVideo::WIDTH, TVideo::HEIGHT, options.scale_resolution),
+            size: VideoSize::new_scaled(video.width(), video.height(), options.scale_resolution),
             options: options.clone(),
             runtime,
             image_source,
@@ -371,9 +371,9 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
         let index = &self.timeline_index;
         let time_base = self.runtime.time_base;
         TimelineReport {
-            fps: TVideo::FPS,
-            width: TVideo::WIDTH,
-            height: TVideo::HEIGHT,
+            fps: self.video.fps(),
+            width: self.video.width(),
+            height: self.video.height(),
             duration_frames: index.duration_in_frames,
             duration_seconds: index.duration_in_seconds(),
             scenes: index
@@ -414,6 +414,11 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
         self.options.media
     }
 
+    /// The video that this previewer renders.
+    pub fn video(&self) -> &'a TVideo {
+        self.video
+    }
+
     pub fn options(&self) -> &RenderOptions<'a, 'media> {
         &self.options
     }
@@ -425,7 +430,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
 
     /// Changes the output size of the following frames.
     pub fn set_scale(&mut self, scale: f64) {
-        self.size = VideoSize::new_scaled(TVideo::WIDTH, TVideo::HEIGHT, scale);
+        self.size = VideoSize::new_scaled(self.video.width(), self.video.height(), scale);
     }
 
     /// Calls `Video::render_frame` and converts the result.
@@ -532,7 +537,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
         self.configure_renderer_cache(renderer);
         let tree = self.convert_frame(frame, renderer.fast_shapes())?;
         let (width, height) = self.size();
-        renderer.render_tree(&tree, TVideo::BACKGROUND_COLOR, width, height)
+        renderer.render_tree(&tree, self.video.background_color(), width, height)
     }
 
     fn configure_renderer_cache(&mut self, renderer: &dyn FrameRenderer) {
@@ -573,6 +578,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
     ) -> FFramesRendererResult<()> {
         self.configure_renderer_cache(renderer);
         let (width, height) = self.size();
+        let background = self.video.background_color();
         let batch = Batch {
             fast_shapes: renderer.fast_shapes(),
             inspect: false,
@@ -584,8 +590,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
             batch,
             |tree| tree,
             |frame, tree, _| {
-                let pixels =
-                    renderer.render_tree(&tree?, TVideo::BACKGROUND_COLOR, width, height)?;
+                let pixels = renderer.render_tree(&tree?, background, width, height)?;
                 each(frame, pixels)
             },
         )
@@ -611,6 +616,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
     ) -> FFramesRendererResult<()> {
         self.configure_renderer_cache(renderer);
         let (width, height) = self.size();
+        let background = self.video.background_color();
         let batch = Batch {
             fast_shapes: renderer.fast_shapes(),
             inspect: true,
@@ -623,8 +629,7 @@ impl<'a, 'media: 'a, TVideo: Video> Previewer<'a, 'media, TVideo> {
             batch,
             |tree| tree,
             |frame, tree, found| {
-                let pixels =
-                    renderer.render_tree(&tree?, TVideo::BACKGROUND_COLOR, width, height)?;
+                let pixels = renderer.render_tree(&tree?, background, width, height)?;
                 each(pixels, report(&index, frame, found))
             },
         )
@@ -758,7 +763,7 @@ impl<'p, 'media: 'p, TVideo: Video> Conversion<'p, 'media, TVideo> {
                 Frame::__internal_make_for_renderer(
                     frame,
                     frame,
-                    TVideo::FPS,
+                    self.video.fps(),
                     worker.text_cache.clone(),
                     worker.decoders.clone(),
                 ),

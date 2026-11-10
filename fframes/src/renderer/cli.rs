@@ -274,8 +274,8 @@ fn parse_region(value: &str) -> Result<Region, String> {
 const MAX_RENDER_SIDE: f64 = 16_384.;
 
 /// Fails when the whole frame at `scale` would exceed [`MAX_RENDER_SIDE`].
-fn check_render_size<V: Video>(scale: f64) -> CliResult<()> {
-    let (width, height) = (V::WIDTH as f64 * scale, V::HEIGHT as f64 * scale);
+fn check_render_size<V: Video>(video: &V, scale: f64) -> CliResult<()> {
+    let (width, height) = (video.width() as f64 * scale, video.height() as f64 * scale);
     if width > MAX_RENDER_SIDE || height > MAX_RENDER_SIDE {
         return Err(format!(
             "the whole frame would be rendered at {width:.0}x{height:.0}, more than \
@@ -299,8 +299,8 @@ fn file_name(spec: &str) -> String {
     name.trim_matches('_').to_owned()
 }
 
-fn crop_frame<V: Video>(frame: &RgbaFrame, region: Region) -> RgbaFrame {
-    let scale = f64::from(frame.width) / V::WIDTH as f64;
+fn crop_frame<V: Video>(video: &V, frame: &RgbaFrame, region: Region) -> RgbaFrame {
+    let scale = f64::from(frame.width) / video.width() as f64;
     frame.crop(
         (region.x * scale).round().max(0.) as u32,
         (region.y * scale).round().max(0.) as u32,
@@ -419,6 +419,11 @@ pub fn new<'a, 'media: 'a, V: Video + Send + Sync>(
 impl<'r, 'a, 'media: 'a, V: Video + Send + Sync, B: FFramesRenderBackend, A: Args, R: Renderers>
     Runner<'r, 'a, 'media, V, B, A, R>
 {
+    /// The video that this command line renders.
+    pub fn video(&self) -> &'a V {
+        self.video
+    }
+
     /// Renders with another backend, e.g. `SkiaFFramesRenderer`. Frame previews use the
     /// backend's own renderer, so they look like the rendered video.
     pub fn backend<B2: FFramesRenderBackend>(
@@ -633,7 +638,7 @@ fn preview<'a, 'media: 'a, V: Video>(
     };
     let start_frame = {
         let time_base = crate::TimeBase {
-            fps: V::FPS,
+            fps: video.fps(),
             sample_rate: options.audio_encoder_options.sample_rate,
         };
         let timeline = crate::FFramesRendererRuntime::resolve_video_timeline(
@@ -644,7 +649,7 @@ fn preview<'a, 'media: 'a, V: Video>(
         )
         .map_err(err)?;
         crate::TimelineIndex::new(
-            V::FPS,
+            video.fps(),
             timeline.duration_in_frames,
             timeline.scenes.as_ref(),
         )
@@ -794,7 +799,8 @@ fn render<'a, 'media: 'a, V: Video + Send + Sync, B: FFramesRenderBackend>(
     ensure_parent(&output)?;
     super::render(&output, video, backend, &options).map_err(err)?;
 
-    let size = crate::VideoSize::new_scaled(V::WIDTH, V::HEIGHT, options.scale_resolution);
+    let size =
+        crate::VideoSize::new_scaled(video.width(), video.height(), options.scale_resolution);
     let result = RenderResult {
         output,
         start_seconds: timeline.frame_to_seconds(range.start),
@@ -864,6 +870,7 @@ fn frame<'a, 'm: 'a, V: Video>(
     args: FrameArgs,
 ) -> CliResult {
     std::fs::create_dir_all(&args.output).map_err(err)?;
+    let video = previewer.video();
     let zoom = args.zoom.unwrap_or_else(|| {
         args.crop
             .map_or(1., |crop| (960. / crop.width).clamp(1., 8.))
@@ -872,7 +879,7 @@ fn frame<'a, 'm: 'a, V: Video>(
         return Err(format!("--zoom {zoom} must be a positive number"));
     }
     let scale = previewer.options().scale_resolution * zoom;
-    check_render_size::<V>(scale)?;
+    check_render_size(previewer.video(), scale)?;
     previewer.set_scale(scale);
 
     let specs = resolve_frames(previewer, &args.at)?;
@@ -885,7 +892,7 @@ fn frame<'a, 'm: 'a, V: Video>(
             if !args.ids
                 && let Some(crop) = args.crop
             {
-                pixels = crop_frame::<V>(&pixels, crop);
+                pixels = crop_frame(video, &pixels, crop);
             }
             rendered.push((pixels, report));
             Ok(())
@@ -921,7 +928,7 @@ fn frame<'a, 'm: 'a, V: Video>(
         if args.ids
             && let Some(crop) = args.crop
         {
-            pixels = crop_frame::<V>(&pixels, crop);
+            pixels = crop_frame(video, &pixels, crop);
         }
         let name = file_name(&spec);
         let path = args.output.join(format!("{name}.png"));
@@ -989,12 +996,13 @@ fn render_cells<'a, 'm: 'a, V: Video>(
     frames: &[usize],
     crop: Option<Region>,
 ) -> CliResult<(Vec<sheet::SheetCell>, Vec<FrameReport>)> {
+    let video = previewer.video();
     let mut cells = Vec::new();
     let mut reports = Vec::new();
     previewer
         .render_inspected_each(frames, renderer, |mut pixels, report| {
             if let Some(crop) = crop {
-                pixels = crop_frame::<V>(&pixels, crop);
+                pixels = crop_frame(video, &pixels, crop);
             }
             cells.push(sheet::SheetCell {
                 frame: pixels,
@@ -1056,9 +1064,11 @@ fn strip<'a, 'm: 'a, V: Video>(
             .map_err(err)?;
         spread(range, args.count)
     };
-    let visible_width = args.crop.map_or(V::WIDTH as f64, |crop| crop.width);
+    let visible_width = args
+        .crop
+        .map_or(previewer.video().width() as f64, |crop| crop.width);
     let scale = f64::from(args.width) / visible_width;
-    check_render_size::<V>(scale)?;
+    check_render_size(previewer.video(), scale)?;
     previewer.set_scale(scale);
     let (cells, diagnostics) = render_cells(previewer, renderer, &frames, args.crop)?;
     let image = sheet::contact_sheet(
@@ -1236,7 +1246,7 @@ fn scan_pops<'a, 'm: 'a, V: Video>(
     renderer: &mut dyn FrameRenderer,
     range: std::ops::Range<usize>,
 ) -> CliResult<Vec<Finding>> {
-    previewer.set_scale((POP_SCAN_WIDTH / V::WIDTH as f64).min(1.));
+    previewer.set_scale((POP_SCAN_WIDTH / previewer.video().width() as f64).min(1.));
     let (width, height) = previewer.size();
     let mut detector = PopDetector::new(width, height);
     let progress = !json && std::io::stderr().is_terminal();
@@ -1290,7 +1300,7 @@ fn scan_pops<'a, 'm: 'a, V: Video>(
         }
     }
 
-    let to_video = V::WIDTH as f32 / width as f32;
+    let to_video = previewer.video().width() as f32 / width as f32;
     let timeline = previewer.timeline();
     Ok(groups
         .into_iter()
@@ -1503,7 +1513,7 @@ fn mixer_for<'a, 'm: 'a, V: Video>(
 ) -> (AudioMixer<'m>, std::ops::Range<usize>) {
     let options = previewer.options();
     let time_base = crate::TimeBase {
-        fps: V::FPS,
+        fps: previewer.video().fps(),
         sample_rate: options.audio_encoder_options.sample_rate,
     };
     let samples = AudioTimelineSamples::from_frames(range.start, &time_base).as_usize()
@@ -1578,7 +1588,8 @@ fn audio<'a, 'm: 'a, V: Video>(
             let (mut mixer, samples) = mixer_for(previewer, frames.clone());
             let (left, right) = mixer.render_all();
             let to_samples = |frame: usize| {
-                ((frame as f64 / V::FPS as f64 * sample_rate as f64).round() as usize)
+                ((frame as f64 / previewer.video().fps() as f64 * sample_rate as f64).round()
+                    as usize)
                     .clamp(samples.start, samples.end)
                     - samples.start
             };
@@ -1639,11 +1650,12 @@ fn audio<'a, 'm: 'a, V: Video>(
             let (mixer, _) = mixer_for(previewer, timeline.full_range());
             let mut results = Vec::new();
             for (spec, frame) in resolve_frames(previewer, &at)? {
-                let sample = (frame as f64 / V::FPS as f64 * sample_rate as f64).round() as usize;
+                let sample = (frame as f64 / previewer.video().fps() as f64 * sample_rate as f64)
+                    .round() as usize;
                 results.push(AudioAt {
                     spec,
                     frame,
-                    seconds: frame as f64 / V::FPS as f64,
+                    seconds: frame as f64 / previewer.video().fps() as f64,
                     tracks: mixer.active_tracks_at(sample),
                 });
             }
