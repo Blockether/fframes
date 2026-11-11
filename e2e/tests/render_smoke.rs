@@ -3,12 +3,35 @@
 //! frames or external tools (ffmpeg CLI, odiff), so it runs on every OS in CI, Windows
 //! included.
 
+use fframes::ffmpeg_sys_fframes::{AVMediaType, avformat_close_input, avformat_open_input};
 use fframes::media::FFmpegDecoder;
-use fframes::{AudioMap, Color, Duration, FFramesContext, Frame, RenderOptions, Svgr, Video};
+use fframes::{
+    AudioMap, Color, Duration, FFramesContext, Frame, RenderOptions, Scene, Scenes, Svgr, Video,
+};
 
 const FPS: usize = 10;
-const FRAMES: usize = 20;
-const SWITCH_AT: usize = FRAMES / 2;
+const SWITCH_AT: usize = 10;
+
+/// A solid color scene without audio.
+#[derive(Debug)]
+struct Fill(&'static str);
+
+impl Scene for Fill {
+    fn duration(&self) -> Duration<'_> {
+        Duration::Frames(SWITCH_AT)
+    }
+
+    fn render_frame(&self, _: Frame, _: &FFramesContext) -> Svgr<'_> {
+        fframes::svgr!(
+            <svg xmlns="http://www.w3.org/2000/svg" width={SmokeVideo::WIDTH} height={SmokeVideo::HEIGHT}>
+                <rect x="0" y="0" width={SmokeVideo::WIDTH} height={SmokeVideo::HEIGHT} fill={self.0} />
+            </svg>
+        )
+    }
+}
+
+const RED: Fill = Fill("#ff0000");
+const BLUE: Fill = Fill("#0000ff");
 
 #[derive(Debug)]
 struct SmokeVideo;
@@ -20,25 +43,19 @@ impl Video for SmokeVideo {
     const BACKGROUND_COLOR: Color = Color::BLACK;
 
     fn duration(&self) -> Duration<'_> {
-        Duration::Frames(FRAMES)
+        Duration::Auto
     }
 
     fn audio(&self) -> AudioMap<'_> {
         AudioMap::none()
     }
 
-    fn render_frame<'a>(&'a self, frame: Frame, _ctx: &FFramesContext<'a, '_>) -> Svgr<'a> {
-        let fill = if frame.index < SWITCH_AT {
-            "#ff0000"
-        } else {
-            "#0000ff"
-        };
+    fn define_scenes(&self) -> Scenes<'_> {
+        Scenes::from(vec![&RED as &dyn Scene, &BLUE as &dyn Scene])
+    }
 
-        fframes::svgr!(
-            <svg xmlns="http://www.w3.org/2000/svg" width={Self::WIDTH} height={Self::HEIGHT}>
-                <rect x="0" y="0" width={Self::WIDTH} height={Self::HEIGHT} fill={fill} />
-            </svg>
-        )
+    fn render_frame<'a>(&'a self, frame: Frame, ctx: &FFramesContext<'a, '_>) -> Svgr<'a> {
+        ctx.render_scenes(&frame)
     }
 }
 
@@ -76,6 +93,27 @@ fn assert_color_close(actual: [u8; 4], expected: [u8; 3], frame: usize) {
     );
 }
 
+fn stream_types(path: &std::path::Path) -> Vec<AVMediaType> {
+    let filename = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+    unsafe {
+        let mut input = std::ptr::null_mut();
+        assert_eq!(
+            avformat_open_input(
+                &raw mut input,
+                filename.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            ),
+            0
+        );
+        let types = (0..(*input).nb_streams as usize)
+            .map(|index| (*(**(*input).streams.add(index)).codecpar).codec_type)
+            .collect();
+        avformat_close_input(&raw mut input);
+        types
+    }
+}
+
 #[test]
 fn renders_and_decodes_video() {
     let dir = std::env::temp_dir().join(format!("fframes-smoke-{}", std::process::id()));
@@ -98,6 +136,8 @@ fn renders_and_decodes_video() {
     .unwrap();
 
     assert!(std::fs::metadata(&output).unwrap().len() > 0);
+    // A video without audio tracks must not get a silent audio stream.
+    assert_eq!(stream_types(&output), [AVMediaType::AVMEDIA_TYPE_VIDEO]);
 
     let mut decoder = unsafe { FFmpegDecoder::new(&output, FPS, 1) }.unwrap();
     assert_color_close(center_pixel(&mut decoder, 0), [255, 0, 0], 0);

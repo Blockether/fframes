@@ -642,15 +642,19 @@ impl<'a> AudioMap<'a> {
             })
             .transpose()?;
 
-        Ok(match (scenes_resolved_map, global_resolved_map) {
+        let tracks = match (scenes_resolved_map, global_resolved_map) {
             (Some(scenes_resolved_map), Some(mut global_resolved_map)) => {
                 global_resolved_map.extend(scenes_resolved_map);
-                Some(ResolvedAudioMap(global_resolved_map))
+                Some(global_resolved_map)
             }
-            (Some(scene_maps), None) => Some(ResolvedAudioMap(scene_maps)),
-            (None, Some(global_maps)) => Some(ResolvedAudioMap(global_maps)),
+            (Some(scene_maps), None) => Some(scene_maps),
+            (None, Some(global_maps)) => Some(global_maps),
             (None, None) => None,
-        })
+        };
+        // A map without tracks is no audio: the encoder must not add a silent stream.
+        Ok(tracks
+            .filter(|tracks| !tracks.is_empty())
+            .map(ResolvedAudioMap))
     }
 
     pub fn resolve_with_ctx<'media: 'a, TUnit: AudioTimelineUnit + std::fmt::Debug>(

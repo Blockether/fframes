@@ -135,6 +135,7 @@ unsafe fn create_encoder_copy_from_file(
     file: &Path,
     output: &Path,
     render_options: &RenderOptions,
+    with_audio: bool,
 ) -> Result<Encoder, RenderEncodingError> {
     unsafe {
         let mut input_format_ctx: *mut AVFormatContext = std::ptr::null_mut();
@@ -153,15 +154,17 @@ unsafe fn create_encoder_copy_from_file(
         );
 
         let output_video_stream = avformat_new_stream(output_format_ctx, std::ptr::null_mut());
-        let mut audio_stream =
-            match Stream::make_audio(output_format_ctx, &render_options.audio_encoder_options) {
-                Ok(audio_stream) => audio_stream,
-                Err(err) => {
-                    avformat_close_input(&raw mut input_format_ctx);
-                    avformat_free_context(output_format_ctx);
-                    return Err(err);
-                }
-            };
+        let mut audio_stream = match with_audio
+            .then(|| Stream::make_audio(output_format_ctx, &render_options.audio_encoder_options))
+            .transpose()
+        {
+            Ok(audio_stream) => audio_stream,
+            Err(err) => {
+                avformat_close_input(&raw mut input_format_ctx);
+                avformat_free_context(output_format_ctx);
+                return Err(err);
+            }
+        };
 
         avcodec_parameters_copy(
             (*output_video_stream).codecpar,
@@ -180,7 +183,9 @@ unsafe fn create_encoder_copy_from_file(
         // after a successful header write, so the encoder is only built once
         // the header is out and a failed header releases the context by hand.
         if let Err(err) = crate::renderer::encoder::write_header(output_format_ctx, true) {
-            audio_stream.free();
+            if let Some(audio_stream) = audio_stream.as_mut() {
+                audio_stream.free();
+            }
             if !(*output_format_ctx).pb.is_null() {
                 avio_closep(&raw mut (*output_format_ctx).pb);
             }
@@ -194,7 +199,7 @@ unsafe fn create_encoder_copy_from_file(
                 enc: std::ptr::null_mut(),
                 variant: StreamVariant::Video,
             },
-            audio_stream: Some(audio_stream),
+            audio_stream,
             oc: output_format_ctx,
         })
     }
@@ -496,7 +501,8 @@ pub unsafe fn concat_video_files_with_audio(
     logger: &Arc<dyn super::fframes_logger::FFramesLogger>,
 ) -> Result<(), RenderEncodingError> {
     unsafe {
-        let encoder = create_encoder_copy_from_file(&files[0], output, render_options)?;
+        let encoder =
+            create_encoder_copy_from_file(&files[0], output, render_options, audio_map.is_some())?;
 
         encoder.fill_streams_from_files(files)?;
 
@@ -605,7 +611,8 @@ mod tests {
 
             let output = directory.join(format!("out-{codec_name}.mp4"));
             unsafe {
-                let encoder = create_encoder_copy_from_file(&files[0], &output, &options).unwrap();
+                let encoder =
+                    create_encoder_copy_from_file(&files[0], &output, &options, false).unwrap();
                 let filename = CString::new(files[0].to_str().unwrap()).unwrap();
                 let mut input = std::ptr::null_mut();
                 assert_eq!(
