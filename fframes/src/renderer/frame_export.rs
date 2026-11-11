@@ -306,9 +306,14 @@ impl<'a> VideoEncoderInfo<'a> {
         }
     }
 
-    /// The encoder runs on dedicated hardware (`AV_CODEC_CAP_HARDWARE`), e.g. `h264_videotoolbox`.
+    /// The encoder runs on dedicated hardware, e.g. `h264_videotoolbox`. libav sets
+    /// `AV_CODEC_CAP_HARDWARE` only on some of them (not on the `VideoToolbox` ones), but each
+    /// one has a hardware configuration and no software encoder has one.
     pub fn is_hardware(&self) -> bool {
-        unsafe { (*self.codec).capabilities & AV_CODEC_CAP_HARDWARE as i32 != 0 }
+        unsafe {
+            (*self.codec).capabilities & AV_CODEC_CAP_HARDWARE as i32 != 0
+                || !avcodec_get_hw_config(self.codec, 0).is_null()
+        }
     }
 
     /// `EncoderOptions::pixel_format`: what the user asked the video to be stored in.

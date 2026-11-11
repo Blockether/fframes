@@ -78,6 +78,34 @@ fn assert_color_close(actual: [u8; 4], expected: [u8; 3], frame: usize) {
     );
 }
 
+/// The pipeline opens half as many segments at once for a hardware encoder. `VideoToolbox`
+/// takes only about 15 sessions in one process; with the software count (1.5 per thread)
+/// the render failed with "Cannot create compression session: -12903".
+#[test]
+fn videotoolbox_encoders_are_hardware_encoders() {
+    for (encoder, hardware) in [
+        ("h264_videotoolbox", true),
+        ("hevc_videotoolbox", true),
+        ("libx264", false),
+    ] {
+        let options = EncoderOptions {
+            preferred_encoder: Some(encoder),
+            ..Default::default()
+        };
+        let info = VideoEncoderInfo::for_output(
+            std::path::Path::new("out.mp4"),
+            (1280, 720, 60),
+            &options,
+        )
+        .unwrap();
+        if info.name() != encoder {
+            eprintln!("skipping {encoder}: FFmpeg was built without it");
+            continue;
+        }
+        assert_eq!(info.is_hardware(), hardware, "{encoder}");
+    }
+}
+
 #[test]
 fn videotoolbox_encoders_read_the_frames_skia_rendered() {
     let metal = SkiaMetalCtx::new(TwoColors::WIDTH, TwoColors::HEIGHT).expect("a Metal device");
